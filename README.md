@@ -6,7 +6,7 @@ The implementation code of the paper "AutoGRN: An Automated Graph Neural Network
 ```shell
 python==3.7.12
 torch==1.12.1+cu116
-dgl==1.0.1.cu116
+dgl==1.0.1.cu116    if CPU dgl==1.0.1
 scikit-learn==1.0.2
 numpy==1.19.5
 networkx==2.6.3
@@ -15,6 +15,8 @@ psutil==6.1.0
 tqdm==4.67.1
 pandas==1.3.5
 tables==3.7.0
+if use GPU torch==2.0.0+cu118
+pip install dgl==2.0.0+cu118 -f https://data.dgl.ai/wheels/cu118/repo.html
 ```
 
 
