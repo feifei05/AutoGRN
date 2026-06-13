@@ -3,14 +3,32 @@ import dgl.nn.pytorch as dglnn
 import torch.nn as nn
 
 
+# DGL HeteroGraphConv passes (src_feat, dst_feat) to relation convs, but some
+# conv layers only accept a single feature tensor.
+_SINGLE_FEAT_CONVS = {'TAGConv', 'GINConv', 'EdgeConv'}
+
+
+class HeteroSingleInputConv(nn.Module):
+    """Adapt single-input conv layers for HeteroGraphConv."""
+
+    def __init__(self, conv):
+        super().__init__()
+        self.conv = conv
+
+    def forward(self, graph, feat):
+        if isinstance(feat, tuple):
+            feat = feat[0]
+        return self.conv(graph, feat)
+
+
 def hetero_gene_conv_map(conv_type, input_dim, hidden_dim):
     return dglnn.HeteroGraphConv({
-        ('gene', 'co_expr', 'gene'): conv_map(conv_type, input_dim, hidden_dim),
-        ('gene', 'regulates', 'gene'): conv_map(conv_type, input_dim, hidden_dim),
+        ('gene', 'co_expr', 'gene'): conv_map(conv_type, input_dim, hidden_dim, for_hetero=True),
+        ('gene', 'regulates', 'gene'): conv_map(conv_type, input_dim, hidden_dim, for_hetero=True),
     }, aggregate='sum')
 
 
-def conv_map(conv_type, input_dim, hidden_dim):
+def conv_map(conv_type, input_dim, hidden_dim, for_hetero=False):
     if conv_type == 'SAGEConv':
         conv_layer = dglnn.SAGEConv(input_dim, hidden_dim, aggregator_type='mean')
     elif conv_type == 'SAGEv2Conv':
@@ -34,6 +52,9 @@ def conv_map(conv_type, input_dim, hidden_dim):
         conv_layer = dglnn.EdgeConv(input_dim, hidden_dim, allow_zero_in_degree=True)
     else:
         raise Exception('Wrong convolution function!')
+
+    if for_hetero and conv_type in _SINGLE_FEAT_CONVS:
+        conv_layer = HeteroSingleInputConv(conv_layer)
     return conv_layer
 
 
