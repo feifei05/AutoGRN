@@ -5,6 +5,12 @@ from sklearn.metrics import roc_auc_score, accuracy_score, average_precision_sco
 from GNAS_core.model.gnn_model import GNN_Model
 
 
+def _get_fold_graph(data_e, fold_idx):
+    if getattr(data_e, 'use_enhanced_graph', False) and getattr(data_e, 'graph_all', None):
+        return data_e.graph_all[fold_idx]
+    return data_e.graph
+
+
 def inference_scratch_train(gnn_architecture, data_e, args):
     pre_all_val = []
     label_all_val = []
@@ -19,7 +25,7 @@ def inference_scratch_train(gnn_architecture, data_e, args):
         print('=' * 50)
         print('Fold:', fold)
 
-        graph = data_e.graph
+        graph = _get_fold_graph(data_e, fold - 1)
         bipartite_graph = data_e.bipartite_graph
         train_samples = data_e.train_samples_all[fold - 1]
         train_labels = data_e.train_labels_all[fold - 1]
@@ -28,7 +34,14 @@ def inference_scratch_train(gnn_architecture, data_e, args):
         test_samples = data_e.test_samples_all[fold - 1]
         test_labels = data_e.test_labels_all[fold - 1]
 
-        gnn_model = GNN_Model(gnn_architecture, in_dim=data_e.gene_emb.shape[1]).to(args.device)
+        gnn_model = GNN_Model(
+            gnn_architecture,
+            in_dim=data_e.gene_feat_dim,
+            cell_in_dim=data_e.cell_feat_dim,
+            bipartite_gene_in_dim=data_e.bipartite_gene_feat_dim,
+            use_hetero_gene_graph=getattr(data_e, 'use_enhanced_graph', False),
+            gene_cell_etype=getattr(data_e, 'gene_cell_etype', 'have'),
+        ).to(args.device)
         optimizer = torch.optim.Adam(gnn_model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         criterion = nn.BCEWithLogitsLoss()
         val_acc_best = 0.0

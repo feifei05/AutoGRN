@@ -4,7 +4,7 @@ import torch.nn as nn
 from sklearn.metrics import roc_auc_score, accuracy_score, average_precision_score, precision_recall_curve, auc
 from GNAS_core.model.logger import gnn_architecture_performance_save
 from GNAS_core.model.gnn_model import GNN_Model
-from GNAS_core.model.inference_test import scratch_train_each_epoch, eval_dataset
+from GNAS_core.model.inference_test import scratch_train_each_epoch, eval_dataset, _get_fold_graph
 
 
 def estimation(gnn_architecture_list, args, graph_data):
@@ -25,21 +25,30 @@ def search_train(data_e, gnn_architecture, args):
     pre_all_val = []
     label_all_val = []
 
-    epochs = args.train_epoch
-    for fold in range(1, 4):
-        graph = data_e.graph
+    epochs = getattr(args, 'search_train_epoch', None) or args.train_epoch
+    stop_num = getattr(args, 'search_stop_num', 10)
+    cv_folds = getattr(args, 'search_cv_folds', 3)
+
+    for fold in range(1, cv_folds + 1):
+        graph = _get_fold_graph(data_e, fold - 1)
         bipartite_graph = data_e.bipartite_graph
         train_samples = data_e.train_samples_all[fold - 1]
         train_labels = data_e.train_labels_all[fold - 1]
         val_samples = data_e.val_samples_all[fold - 1]
         val_labels = data_e.val_labels_all[fold - 1]
 
-        gnn_model = GNN_Model(gnn_architecture, in_dim=data_e.gene_emb.shape[1]).to(args.device)
+        gnn_model = GNN_Model(
+            gnn_architecture,
+            in_dim=data_e.gene_feat_dim,
+            cell_in_dim=data_e.cell_feat_dim,
+            bipartite_gene_in_dim=data_e.bipartite_gene_feat_dim,
+            use_hetero_gene_graph=getattr(data_e, 'use_enhanced_graph', False),
+            gene_cell_etype=getattr(data_e, 'gene_cell_etype', 'have'),
+        ).to(args.device)
         optimizer = torch.optim.Adam(gnn_model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         criterion = nn.BCEWithLogitsLoss()
         val_acc_best = 0.0
         early_stop = 0
-        stop_num = 10
 
         for epoch in range(epochs):
             train_acc, train_loss = scratch_train_each_epoch(gnn_model, optimizer, criterion, graph, bipartite_graph, train_samples, train_labels)

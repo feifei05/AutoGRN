@@ -3,6 +3,13 @@ import dgl.nn.pytorch as dglnn
 import torch.nn as nn
 
 
+def hetero_gene_conv_map(conv_type, input_dim, hidden_dim):
+    return dglnn.HeteroGraphConv({
+        ('gene', 'co_expr', 'gene'): conv_map(conv_type, input_dim, hidden_dim),
+        ('gene', 'regulates', 'gene'): conv_map(conv_type, input_dim, hidden_dim),
+    }, aggregate='sum')
+
+
 def conv_map(conv_type, input_dim, hidden_dim):
     if conv_type == 'SAGEConv':
         conv_layer = dglnn.SAGEConv(input_dim, hidden_dim, aggregator_type='mean')
@@ -30,39 +37,40 @@ def conv_map(conv_type, input_dim, hidden_dim):
     return conv_layer
 
 
-def bi_conv_map(bi_conv_type, input_dim, hidden_dim):
+def bi_conv_map(bi_conv_type, gene_in_dim, cell_in_dim, hidden_dim, gene_cell_etype='expressed_in'):
+    gc_etype = (('gene', gene_cell_etype, 'cell'), ('cell', gene_cell_etype, 'gene'))
     if bi_conv_type == 'BiSAGEConv':
         bi_conv_layer = dglnn.HeteroGraphConv({
-            ('gene', 'have', 'cell'): dglnn.SAGEConv(input_dim, hidden_dim * 2, aggregator_type='mean'),
-            ('cell', 'have', 'gene'): dglnn.SAGEConv(input_dim, hidden_dim, aggregator_type='mean'),
+            gc_etype[0]: dglnn.SAGEConv(gene_in_dim, hidden_dim * 2, aggregator_type='mean'),
+            gc_etype[1]: dglnn.SAGEConv(cell_in_dim, hidden_dim, aggregator_type='mean'),
         })
     elif bi_conv_type == 'BiSAGEv2Conv':
         bi_conv_layer = dglnn.HeteroGraphConv({
-            ('gene', 'have', 'cell'): dglnn.SAGEConv(input_dim, hidden_dim * 2, aggregator_type='pool'),
-            ('cell', 'have', 'gene'): dglnn.SAGEConv(input_dim, hidden_dim, aggregator_type='pool'),
+            gc_etype[0]: dglnn.SAGEConv(gene_in_dim, hidden_dim * 2, aggregator_type='pool'),
+            gc_etype[1]: dglnn.SAGEConv(cell_in_dim, hidden_dim, aggregator_type='pool'),
         })
     elif bi_conv_type == 'BiGCNConv':
         bi_conv_layer = dglnn.HeteroGraphConv({
-            ('gene', 'have', 'cell'): dglnn.SAGEConv(input_dim, hidden_dim * 2, aggregator_type='gcn'),
-            ('cell', 'have', 'gene'): dglnn.SAGEConv(input_dim, hidden_dim, aggregator_type='gcn'),
+            gc_etype[0]: dglnn.SAGEConv(gene_in_dim, hidden_dim * 2, aggregator_type='gcn'),
+            gc_etype[1]: dglnn.SAGEConv(cell_in_dim, hidden_dim, aggregator_type='gcn'),
         })
     elif bi_conv_type == 'BiGATConv':
         heads = 2
         bi_conv_layer = dglnn.HeteroGraphConv({
-            ('gene', 'have', 'cell'): dglnn.GATConv(input_dim, hidden_dim * 2, num_heads=heads, allow_zero_in_degree=True),
-            ('cell', 'have', 'gene'): dglnn.GATConv(input_dim, hidden_dim, num_heads=heads, allow_zero_in_degree=True),
+            gc_etype[0]: dglnn.GATConv(gene_in_dim, hidden_dim * 2, num_heads=heads, allow_zero_in_degree=True),
+            gc_etype[1]: dglnn.GATConv(cell_in_dim, hidden_dim, num_heads=heads, allow_zero_in_degree=True),
         })
     elif bi_conv_type == 'BiGINConv':
-        apply_func_gc = nn.Sequential(nn.Linear(input_dim, hidden_dim * 2), nn.ReLU(), nn.Linear(hidden_dim * 2, hidden_dim * 2))
-        apply_func_cg = nn.Sequential(nn.Linear(input_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, hidden_dim))
+        apply_func_gc = nn.Sequential(nn.Linear(gene_in_dim, hidden_dim * 2), nn.ReLU(), nn.Linear(hidden_dim * 2, hidden_dim * 2))
+        apply_func_cg = nn.Sequential(nn.Linear(cell_in_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, hidden_dim))
         bi_conv_layer = dglnn.HeteroGraphConv({
-            ('gene', 'have', 'cell'): dglnn.GINConv(apply_func_gc),
-            ('cell', 'have', 'gene'): dglnn.GINConv(apply_func_cg),
+            gc_etype[0]: dglnn.GINConv(apply_func_gc),
+            gc_etype[1]: dglnn.GINConv(apply_func_cg),
         })
     elif bi_conv_type == 'BiGraphConv':
         bi_conv_layer = dglnn.HeteroGraphConv({
-            ('gene', 'have', 'cell'): dglnn.GraphConv(input_dim, hidden_dim * 2, allow_zero_in_degree=True),
-            ('cell', 'have', 'gene'): dglnn.GraphConv(input_dim, hidden_dim, allow_zero_in_degree=True),
+            gc_etype[0]: dglnn.GraphConv(gene_in_dim, hidden_dim * 2, allow_zero_in_degree=True),
+            gc_etype[1]: dglnn.GraphConv(cell_in_dim, hidden_dim, allow_zero_in_degree=True),
         })
     elif bi_conv_type == 'BiNoneConv':
         bi_conv_layer = None

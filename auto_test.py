@@ -59,6 +59,12 @@ if __name__ == "__main__":
     args.store_path = './data_evaluation'
     args = get_data_file_path(args)
 
+    args.use_enhanced_graph = True    #   False报错
+    args.tf_species = 'mouse'
+    args.coexpr_top_k = 20
+    args.coexpr_threshold = 0.3
+    args.coexpr_max_genes = 3000
+
     data_e = GeneData(args.rpkm_path,
                  args.label_path,
                  args.divide_path,
@@ -66,7 +72,13 @@ if __name__ == "__main__":
                  gene_emb_path=args.gene_emb_path,
                  cell_emb_path=args.cell_emb_path,
                  istime=args.is_time, gene_list_path=args.gene_list_path,
-                 data_name=args.data_name, TF_random=args.TF_random, ish5=args.is_h5)
+                 data_name=args.data_name, TF_random=args.TF_random, ish5=args.is_h5,
+                 store_path=args.store_path,
+                 use_enhanced_graph=args.use_enhanced_graph,
+                 tf_species=args.tf_species,
+                 coexpr_top_k=args.coexpr_top_k,
+                 coexpr_threshold=args.coexpr_threshold,
+                 coexpr_max_genes=args.coexpr_max_genes)
 
     data_e = prepare_fold_data(data_e, args)
 

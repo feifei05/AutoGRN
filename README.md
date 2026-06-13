@@ -37,6 +37,27 @@ A quick start example is given by:
 ```shell
 $ python auto_main.py
 ```
+
+By default, `auto_main.py` uses **PPO-based RL search** (`--search_method rl --rl_algorithm ppo`).
+
+To reproduce the original genetic search in the paper:
+
+```shell
+$ python auto_main.py --search_method genetic
+```
+
+RL examples:
+
+```shell
+# Default: PPO + Critic, faster search-phase training
+$ python auto_main.py --search_method rl --rl_algorithm ppo --search_train_epoch 80
+
+# Legacy REINFORCE baseline
+$ python auto_main.py --search_method rl --rl_algorithm reinforce
+
+# Fast smoke test
+$ python auto_main.py --search_method rl --rl_warmup_num 5 --search_epoch 2 --sharing_num 3 --search_train_epoch 20
+```
 ### Optimal GNN Architectures
 
 The following table summarizes the optimal GNN architectures searched by AutoGRN for each dataset:

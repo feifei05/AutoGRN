@@ -6,16 +6,33 @@ import torch
 import collections
 import math
 
+from GNAS_core.graph_utils import (
+    load_tf_gene_indices,
+    build_coexpression_edges,
+    build_regulation_edges,
+    build_gene_node_features,
+    build_multi_rel_gene_graph,
+    build_bipartite_graph,
+)
+
 
 class GeneData:
     def __init__(self, rpkm_path, label_path, divide_path, TF_num, gene_emb_path, cell_emb_path, istime, ish5=False,
-                 gene_list_path=None, data_name=None, TF_random=False, save=False):
+                 gene_list_path=None, data_name=None, TF_random=False, save=False, store_path='./data_evaluation',
+                 use_enhanced_graph=True, tf_species='mouse', coexpr_top_k=20, coexpr_threshold=0.3,
+                 coexpr_max_genes=3000):
         self.gene_cell_src = None
         self.gene_cell_dst = None
         self.istime = istime
         self.data_name = data_name
         self.TF_random = TF_random
         self.save = save
+        self.store_path = store_path
+        self.use_enhanced_graph = use_enhanced_graph
+        self.tf_species = tf_species
+        self.coexpr_top_k = coexpr_top_k
+        self.coexpr_threshold = coexpr_threshold
+        self.coexpr_max_genes = coexpr_max_genes
 
         if not istime:
             if not ish5:
@@ -78,8 +95,46 @@ class GeneData:
 
         self.getTrainTest(TF_num)
 
-        self.graph = self._generate_graph(self.gene_to_name, self.gene_to_idx, self.gene_key_datas, self.gene_emb)
-        self.bipartite_graph = self._generate_bipartite_graph(self.geneHaveCell, self.gene_emb, self.cell_emb)
+        self.tf_indices = []
+        self.gene_feat_dim = self.gene_emb.shape[1]
+        self.cell_feat_dim = self.cell_emb.shape[1]
+        self.coexpr_src = []
+        self.coexpr_dst = []
+        self.graph_all = []
+        self.gene_cell_etype = 'expressed_in' if use_enhanced_graph else 'have'
+
+        if self.use_enhanced_graph:
+            self.tf_indices = load_tf_gene_indices(
+                self.store_path,
+                self.tf_species,
+                self.gene_to_idx,
+                self.gene_to_name,
+            )
+            self.coexpr_src, self.coexpr_dst = build_coexpression_edges(
+                self.origin_data,
+                top_k=self.coexpr_top_k,
+                threshold=self.coexpr_threshold,
+                max_genes=self.coexpr_max_genes,
+            )
+            self.gene_node_feat = build_gene_node_features(
+                self.gene_emb,
+                self.tf_indices,
+                len(self.gene_to_idx),
+            )
+            self.gene_feat_dim = self.gene_node_feat.shape[1]
+            self.bipartite_gene_feat_dim = self.gene_emb.shape[1]
+            bipartite_gene_feat = torch.tensor(self.gene_emb, dtype=torch.float32)
+            self.bipartite_graph = build_bipartite_graph(
+                self.geneHaveCell,
+                bipartite_gene_feat,
+                self.cell_emb,
+            )
+            self.graph = None
+        else:
+            self.gene_node_feat = torch.tensor(self.gene_emb, dtype=torch.float32)
+            self.bipartite_gene_feat_dim = self.gene_feat_dim
+            self.graph = self._generate_graph(self.gene_to_name, self.gene_to_idx, self.gene_key_datas, self.gene_emb)
+            self.bipartite_graph = self._generate_bipartite_graph(self.geneHaveCell, self.gene_emb, self.cell_emb)
 
     def getStartEndIndex(self, divide_path):
         tmp = []
@@ -252,6 +307,23 @@ class GeneData:
         g.ndata['feat'] = torch.tensor(gene_emb)
         return g
 
+    def build_fold_graph(self, train_tf_indices):
+        train_gene_key_datas = [self.gene_key_datas[i] for i in train_tf_indices]
+        regulate_src, regulate_dst = build_regulation_edges(
+            train_gene_key_datas,
+            self.gene_to_name,
+            self.gene_to_idx,
+        )
+        fold_graph = build_multi_rel_gene_graph(
+            self.coexpr_src,
+            self.coexpr_dst,
+            regulate_src,
+            regulate_dst,
+            self.gene_node_feat,
+            len(self.gene_to_idx),
+        )
+        return fold_graph
+
     def _generate_bipartite_graph(self, geneHaveCell, gene_emb, cell_emb):
         gene_num = gene_emb.shape[0]
         cell_num = cell_emb.shape[0]
@@ -338,6 +410,7 @@ def get_data_file_path(args):
 
     args.gene_emb_path = args.store_path + '/embeddings/' + args.data_name + '/gene_embedding.npy'
     args.cell_emb_path = args.store_path + '/embeddings/' + args.data_name + '/cell_embedding.npy'
+    args.tf_species = 'mouse'
     return args
 
 
@@ -352,8 +425,9 @@ def prepare_fold_data(data_e, args):
             for line in f:
                 cross_index.append([int(i) for i in line.strip().split(',')])
 
-    data_e.graph = data_e.graph.to(args.device)
     data_e.bipartite_graph = data_e.bipartite_graph.to(args.device)
+    if not data_e.use_enhanced_graph and data_e.graph is not None:
+        data_e.graph = data_e.graph.to(args.device)
 
     # three-fold cross validation
     z_all = []
@@ -374,6 +448,17 @@ def prepare_fold_data(data_e, args):
 
         train_TF = [j for j in range(TF_num) if j not in test_TF]
         print("test_TF:", test_TF)
+
+        if data_e.use_enhanced_graph:
+            fold_graph = data_e.build_fold_graph(train_TF)
+            fold_graph = fold_graph.to(args.device)
+            data_e.graph_all.append(fold_graph)
+            print(
+                'Fold graph: co_expr={}, regulates={}'.format(
+                    fold_graph.num_edges(('gene', 'co_expr', 'gene')),
+                    fold_graph.num_edges(('gene', 'regulates', 'gene')),
+                )
+            )
 
         labels = []
         for tf in data_e.labels:
@@ -447,6 +532,9 @@ def prepare_fold_data(data_e, args):
     data_e.val_labels_all = val_labels_all
     data_e.test_samples_all = test_samples_all
     data_e.test_labels_all = test_labels_all
+
+    if data_e.use_enhanced_graph and data_e.graph_all:
+        data_e.graph = data_e.graph_all[0]
 
     return data_e
 

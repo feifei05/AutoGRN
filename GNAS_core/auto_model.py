@@ -1,5 +1,6 @@
 from GNAS_core.search_space.search_space_config import SearchSpace
 from GNAS_core.search_algorithm.search_algorithm import Search
+from GNAS_core.search_algorithm.rl_search import RLSearch
 from GNAS_core.model.logger import gnn_architecture_performance_load
 from GNAS_core.model.inference_test import inference_scratch_train
 
@@ -13,7 +14,10 @@ class AutoModel(object):
 
         self.search_space = SearchSpace()
 
-        self.search_algorithm = Search(self.search_space, self.args)
+        if self.args.search_method == 'rl':
+            self.search_algorithm = RLSearch(self.search_space, self.args)
+        else:
+            self.search_algorithm = Search(self.search_space, self.args)
 
         self.search_model()
 
