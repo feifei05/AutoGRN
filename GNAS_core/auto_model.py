@@ -57,7 +57,7 @@ class AutoModel(object):
 
             ## train from scratch
             val_auc, val_ap, test_auc, test_ap = inference_scratch_train(target_architecture, data_e=self.graph_data, args=self.args)
-            # print('Cross-Validation, Val AUC: {:.4f}, Val AP:{:.4f}'.format(val_auc, val_ap))
+            print('Cross-Validation, Val AUC: {:.4f}, Val AP:{:.4f}'.format(val_auc, val_ap))
             print('Cross-Validation, Test AUC: {:.4f}, Test AP:{:.4f}'.format(test_auc, test_ap))
             print('=' * 70)
 

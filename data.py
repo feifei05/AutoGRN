@@ -1,3 +1,4 @@
+from GNAS_core.device_utils import move_dgl_graph
 import dgl
 import numpy as np
 import os
@@ -425,9 +426,9 @@ def prepare_fold_data(data_e, args):
             for line in f:
                 cross_index.append([int(i) for i in line.strip().split(',')])
 
-    data_e.bipartite_graph = data_e.bipartite_graph.to(args.device)
+    data_e.bipartite_graph = move_dgl_graph(data_e.bipartite_graph, args.device)
     if not data_e.use_enhanced_graph and data_e.graph is not None:
-        data_e.graph = data_e.graph.to(args.device)
+        data_e.graph = move_dgl_graph(data_e.graph, args.device)
 
     # three-fold cross validation
     z_all = []
@@ -451,7 +452,7 @@ def prepare_fold_data(data_e, args):
 
         if data_e.use_enhanced_graph:
             fold_graph = data_e.build_fold_graph(train_TF)
-            fold_graph = fold_graph.to(args.device)
+            fold_graph = move_dgl_graph(fold_graph, args.device)
             data_e.graph_all.append(fold_graph)
             print(
                 'Fold graph: co_expr={}, regulates={}'.format(

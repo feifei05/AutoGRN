@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from data import GeneData, get_data_file_path, prepare_fold_data
 from GNAS_core.auto_model import AutoModel
+from GNAS_core.device_utils import resolve_runtime_device
 
 
 def config():
@@ -58,7 +59,7 @@ def config():
                         help='Max variable genes used for co-expression graph construction')
 
     args = parser.parse_args()
-    args.device = (torch.device(args.device) if args.device >= 0 else torch.device("cpu"))
+    args.device = resolve_runtime_device(args.device)
     return args
 
 def set_seed(seed):
